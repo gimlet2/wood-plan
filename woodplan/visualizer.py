@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import List, Tuple
 from .models import Project, Joint
 from .cutlist import CutListResult, StockBoard
+from .viewer3d import render_3d_html
 
 # Colour palette for pieces
 _PIECE_COLOURS = [
@@ -45,6 +46,7 @@ _HTML_TEMPLATE = """\
 <h1>🪵 {title}</h1>
 {description_html}
 {summary_html}
+{view3d_html}
 {cutlist_html}
 {joints_html}
 {inventory_html}
@@ -283,6 +285,7 @@ def render_html(project: Project, cut_result: CutListResult) -> str:
         title=title,
         description_html=desc_html,
         summary_html=_summary_html(project, cut_result),
+        view3d_html=render_3d_html(project),
         cutlist_html=_cutlist_html(project, cut_result, colour_map),
         joints_html=_joints_html(project),
         inventory_html=_inventory_html(project, cut_result),

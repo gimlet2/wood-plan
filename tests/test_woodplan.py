@@ -12,6 +12,7 @@ from woodplan.models import Project, Element, Material, Joint
 import woodplan.cutlist as cutlist
 import woodplan.inventory as inventory
 import woodplan.visualizer as visualizer
+import woodplan.viewer3d as viewer3d
 
 
 # ────────────────────────────────────────────────────────────
@@ -279,6 +280,39 @@ class TestVisualizer:
         with open(out, encoding="utf-8") as fh:
             content = fh.read()
         assert "Test Shelf" in content
+
+
+# ────────────────────────────────────────────────────────────
+#  3D viewer tests
+# ────────────────────────────────────────────────────────────
+
+class TestViewer3D:
+    def test_render_returns_html(self, simple_project):
+        html = viewer3d.render_3d_html(simple_project)
+        assert "<svg" in html
+        assert "polygon" in html
+
+    def test_render_contains_piece_labels(self, simple_project):
+        html = viewer3d.render_3d_html(simple_project)
+        # Labels are truncated to 12 chars; "Side Panel" should appear
+        assert "Side" in html or "Shelf" in html
+
+    def test_layout_places_all_pieces(self, simple_project):
+        placed = viewer3d._infer_layout(simple_project)
+        total_expected = sum(e.quantity for e in simple_project.elements)
+        assert len(placed) == total_expected
+
+    def test_layout_positive_dimensions(self, simple_project):
+        placed = viewer3d._infer_layout(simple_project)
+        for item in placed:
+            assert item["dx"] > 0
+            assert item["dy"] > 0
+            assert item["dz"] > 0
+
+    def test_html_includes_3d_section(self, simple_project):
+        cut_result = cutlist.generate(simple_project)
+        html = visualizer.render_html(simple_project, cut_result)
+        assert "3D Preview" in html
 
 
 # ────────────────────────────────────────────────────────────
