@@ -1,0 +1,119 @@
+# Simple Bookshelf Project
+# Units: mm (millimetres)
+# This example defines a classic 3-shelf bookshelf using pine boards.
+
+project:
+  name: "Simple Pine Bookshelf"
+  description: "A classic 3-shelf bookshelf built from 1×8 pine boards (19×184 mm nominal)"
+  unit: mm
+
+# ─── Stock materials available at the lumber yard ──────────────────────────────
+materials:
+  - id: pine_1x8
+    type: board
+    species: pine
+    width: 184       # mm  (nominal 1×8 inch board)
+    thickness: 19    # mm  (3/4 inch)
+    length: 2440     # mm  (8-foot board)
+    cost_per_length: 15.00
+
+  - id: pine_1x4
+    type: board
+    species: pine
+    width: 89        # mm  (nominal 1×4 inch board)
+    thickness: 19    # mm
+    length: 2440     # mm
+    cost_per_length: 8.50
+
+# ─── Elements (pieces to be cut) ───────────────────────────────────────────────
+elements:
+  - id: side_left
+    material: pine_1x8
+    dimensions:
+      length: 900
+      width: 184
+      thickness: 19
+    label: "Left Side Panel"
+    quantity: 1
+
+  - id: side_right
+    material: pine_1x8
+    dimensions:
+      length: 900
+      width: 184
+      thickness: 19
+    label: "Right Side Panel"
+    quantity: 1
+
+  - id: shelf_middle
+    material: pine_1x8
+    dimensions:
+      length: 600
+      width: 184
+      thickness: 19
+    label: "Middle Shelf"
+    quantity: 2
+
+  - id: panel_top_bottom
+    material: pine_1x8
+    dimensions:
+      length: 600
+      width: 184
+      thickness: 19
+    label: "Top/Bottom Panel"
+    quantity: 2
+
+  - id: back_brace
+    material: pine_1x4
+    dimensions:
+      length: 600
+      width: 89
+      thickness: 19
+    label: "Back Brace"
+    quantity: 2
+
+# ─── Joints / connections ──────────────────────────────────────────────────────
+joints:
+  - type: dado
+    from_element: side_left
+    to_element: shelf_middle
+    description: "Dado housing for middle shelves — bottom shelf"
+    depth: 6
+    position:
+      edge: bottom
+      offset: 300
+    fastener: glue
+
+  - type: dado
+    from_element: side_right
+    to_element: shelf_middle
+    description: "Dado housing for middle shelves — bottom shelf"
+    depth: 6
+    position:
+      edge: bottom
+      offset: 300
+    fastener: glue
+
+  - type: butt
+    from_element: side_left
+    to_element: panel_top_bottom
+    description: "Butt joint at bottom"
+    fastener: screw
+
+  - type: butt
+    from_element: side_right
+    to_element: panel_top_bottom
+    description: "Butt joint at bottom"
+    fastener: screw
+
+  - type: butt
+    from_element: back_brace
+    to_element: side_left
+    description: "Back brace to side"
+    fastener: screw
+
+  - type: butt
+    from_element: back_brace
+    to_element: side_right
+    description: "Back brace to side"
+    fastener: screw
