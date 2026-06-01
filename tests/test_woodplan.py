@@ -113,6 +113,39 @@ class TestParser:
         project = load(str(f))
         assert project.name == "Test Shelf"
 
+    def test_new_joint_types_roundtrip(self):
+        """All supported joint types should parse without error."""
+        new_types = [
+            "rabbet", "miter", "half_lap", "box_joint",
+            "bridle", "tongue_groove", "spline", "dowel",
+        ]
+        for jtype in new_types:
+            yaml_text = textwrap.dedent(f"""\
+                project:
+                  name: "JointTest"
+                  unit: mm
+                materials:
+                  - id: m
+                    species: pine
+                    width: 100
+                    thickness: 19
+                    length: 2000
+                elements:
+                  - id: a
+                    material: m
+                    dimensions: {{length: 300, width: 100, thickness: 19}}
+                  - id: b
+                    material: m
+                    dimensions: {{length: 300, width: 100, thickness: 19}}
+                joints:
+                  - type: {jtype}
+                    from_element: a
+                    to_element: b
+            """)
+            project = loads(yaml_text)
+            assert len(project.joints) == 1
+            assert project.joints[0].type == jtype
+
 
 # ────────────────────────────────────────────────────────────
 #  Cut list tests

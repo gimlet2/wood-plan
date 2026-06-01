@@ -1,0 +1,242 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/gimlet2/wood-plan/main/schema/wood-plan.schema.json",
+  "title": "wood-plan project file",
+  "description": "Schema for .wood project files used by the wood-plan tool.",
+  "type": "object",
+  "required": ["project"],
+  "additionalProperties": false,
+  "properties": {
+    "project": {
+      "description": "Top-level project metadata.",
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Human-readable project name.",
+          "type": "string",
+          "examples": ["Simple Pine Bookshelf"]
+        },
+        "description": {
+          "description": "Optional longer description of the project.",
+          "type": "string"
+        },
+        "unit": {
+          "description": "Measurement unit used throughout the file.",
+          "type": "string",
+          "enum": ["mm", "inch"],
+          "default": "mm"
+        }
+      }
+    },
+    "materials": {
+      "description": "Stock materials available at the lumber yard.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/material"
+      }
+    },
+    "elements": {
+      "description": "Pieces that will be cut from stock material.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/element"
+      }
+    },
+    "joints": {
+      "description": "Connections between elements.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/joint"
+      }
+    }
+  },
+  "definitions": {
+    "material": {
+      "description": "A stock material (e.g. a pine board available in a specific size).",
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique identifier for this material, referenced by elements.",
+          "type": "string",
+          "examples": ["pine_1x8", "cedar_2x4"]
+        },
+        "type": {
+          "description": "Material type.",
+          "type": "string",
+          "enum": ["board", "sheet", "dowel", "moulding"],
+          "default": "board"
+        },
+        "species": {
+          "description": "Wood species or material name.",
+          "type": "string",
+          "examples": ["pine", "oak", "cedar", "maple", "walnut", "plywood"]
+        },
+        "width": {
+          "description": "Board width in project units.",
+          "type": "number",
+          "minimum": 0
+        },
+        "thickness": {
+          "description": "Board thickness in project units.",
+          "type": "number",
+          "minimum": 0
+        },
+        "length": {
+          "description": "Available stock length in project units.",
+          "type": "number",
+          "minimum": 0
+        },
+        "cost_per_length": {
+          "description": "Cost per unit of stock length.",
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "description": "Override the project unit for this material only.",
+          "type": "string",
+          "enum": ["mm", "inch"]
+        }
+      }
+    },
+    "dimensions": {
+      "description": "Three-dimensional size of a piece.",
+      "type": "object",
+      "required": ["length", "width", "thickness"],
+      "additionalProperties": false,
+      "properties": {
+        "length": {
+          "description": "Piece length in project units.",
+          "type": "number",
+          "minimum": 0
+        },
+        "width": {
+          "description": "Piece width in project units.",
+          "type": "number",
+          "minimum": 0
+        },
+        "thickness": {
+          "description": "Piece thickness in project units.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "element": {
+      "description": "A named piece that will be cut from stock material.",
+      "type": "object",
+      "required": ["id", "material", "dimensions"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique identifier for this element, referenced in joints.",
+          "type": "string",
+          "examples": ["side_left", "shelf_middle"]
+        },
+        "material": {
+          "description": "ID of the stock material this piece is cut from.",
+          "type": "string"
+        },
+        "dimensions": {
+          "$ref": "#/definitions/dimensions"
+        },
+        "label": {
+          "description": "Human-readable display name for cut lists and reports.",
+          "type": "string"
+        },
+        "quantity": {
+          "description": "Number of identical pieces to cut.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "notes": {
+          "description": "Optional fabrication notes for this piece.",
+          "type": "string"
+        }
+      }
+    },
+    "joint_position": {
+      "description": "Where a joint sits on an element.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "edge": {
+          "description": "Which face/edge of the element the joint is on.",
+          "type": "string",
+          "enum": ["bottom", "top", "left", "right", "front", "back"],
+          "default": "bottom"
+        },
+        "offset": {
+          "description": "Distance from the named edge in project units.",
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    },
+    "joint": {
+      "description": "A connection between two elements.",
+      "type": "object",
+      "required": ["type", "from_element", "to_element"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "description": "Joint type.\n\ndado – rectangular channel cut across the grain to seat a shelf/panel\nrabbet – notch along the edge or end of a board (one-sided dado)\nbutt – two square-cut pieces meet face-to-face or end-to-face\nmiter – both pieces cut at a matching angle (typically 45°)\nhalf_lap – half the thickness removed from each piece so they sit flush\nbox_joint – interlocking rectangular fingers along the end of a board\nmortise_tenon – a projecting tenon fits into a matching mortise hole\nbridle – open mortise-and-tenon; the tenon slides into a forked end\ntongue_groove – a tongue (ridge) fits into a matching groove\nspline – a thin strip of wood fits into slots in both faces\ndovetail – trapezoidal interlocking fingers; very strong and decorative\npocket – angled hole driven with a pocket-screw jig\nbiscuit – oval compressed-wood wafer glued into matching slots\ndowel – cylindrical wooden pins align and reinforce the joint",
+          "type": "string",
+          "enum": [
+            "dado",
+            "rabbet",
+            "butt",
+            "miter",
+            "half_lap",
+            "box_joint",
+            "mortise_tenon",
+            "bridle",
+            "tongue_groove",
+            "spline",
+            "dovetail",
+            "pocket",
+            "biscuit",
+            "dowel"
+          ]
+        },
+        "from_element": {
+          "description": "ID of the element the joint is cut into or originates from.",
+          "type": "string"
+        },
+        "to_element": {
+          "description": "ID of the mating element.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Optional human-readable description of the joint.",
+          "type": "string"
+        },
+        "depth": {
+          "description": "Depth of the cut in project units (e.g. dado depth).",
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        },
+        "width": {
+          "description": "Width of the cut in project units.",
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        },
+        "position": {
+          "$ref": "#/definitions/joint_position"
+        },
+        "fastener": {
+          "description": "Primary fastener used to secure the joint.",
+          "type": "string",
+          "enum": ["glue", "screw", "nail", "brad_nail", "dowel", "bolt", "pocket_screw", "biscuit", ""]
+        }
+      }
+    }
+  }
+}

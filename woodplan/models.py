@@ -62,15 +62,33 @@ class JointPosition:
 
 @dataclass
 class Joint:
-    """A connection/join between two elements."""
-    type: str                       # dado | butt | mortise_tenon | dovetail | pocket | biscuit
+    """A connection/join between two elements.
+
+    Supported joint types
+    ----------------------
+    dado          – rectangular channel cut across the grain to seat a shelf/panel
+    rabbet        – notch along the edge or end of a board (one-sided dado)
+    butt          – two square-cut pieces meet face-to-face or end-to-face
+    miter         – both pieces cut at a matching angle (typically 45°)
+    half_lap      – half the thickness removed from each piece so they sit flush
+    box_joint      – interlocking rectangular fingers along the end of a board
+    mortise_tenon – a projecting tenon fits into a matching mortise hole
+    bridle        – open mortise-and-tenon; the tenon slides into a forked end
+    tongue_groove – a tongue (ridge) fits into a matching groove
+    spline        – a thin strip of wood (or biscuit) fits into slots in both faces
+    dovetail      – trapezoidal interlocking fingers; very strong and decorative
+    pocket        – angled hole driven with a pocket-screw jig
+    biscuit       – oval compressed-wood wafer glued into matching slots
+    dowel         – cylindrical wooden pins align and reinforce the joint
+    """
+    type: str                       # see docstring for supported types
     from_element: str
     to_element: str
     description: str = ""
     depth: float = 0.0
     width: float = 0.0
     position: Optional[JointPosition] = None
-    fastener: str = ""              # screw | nail | dowel | glue
+    fastener: str = ""              # screw | nail | dowel | glue | brad_nail
 
 
 @dataclass
