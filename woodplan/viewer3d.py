@@ -1,14 +1,15 @@
-"""Isometric 3D preview generator for wood-plan projects.
+"""Three.js interactive 3D preview generator for wood-plan projects.
 
-Uses a heuristic layout engine (no explicit 3-D coordinates in .wood files) to
-place pieces in world space, then renders an SVG image using a standard
-isometric projection.  Works well for common shelf / cabinet / box structures.
+The layout engine (_infer_layout) infers 3-D piece positions from the joint
+topology in the .wood file.  render_3d_html() serialises those positions to
+JSON and embeds them in a self-contained Three.js scene with OrbitControls so
+the user can rotate, zoom, and inspect the assembled project in a browser.
 """
 
 from __future__ import annotations
 
-import math
-from typing import Dict, List, Tuple
+import json
+from typing import Dict, List
 
 from .models import Element, Project
 
@@ -18,116 +19,184 @@ _COLOURS = [
     "#CD853F", "#B8860B", "#DAA520", "#8B4513", "#A0522D",
 ]
 
-# ── Trig constants ────────────────────────────────────────────────────────────
-_COS30 = math.cos(math.radians(30))   # ≈ 0.866
-_SIN30 = 0.5
+# ── Three.js viewer HTML template ─────────────────────────────────────────────
+# __PIECES__ is replaced at runtime with a compact JSON array.
+_THREE_TEMPLATE = """\
+<div class="card">
+<h2>&#x1F50D; 3D Preview</h2>
+<p style="color:#888;font-size:.85em">
+  Drag to rotate &bull; Scroll to zoom &bull; Right-drag to pan &bull;
+  Hover a piece for details
+</p>
+<div id="wood3d-view" style="width:100%;height:520px;border-radius:8px;overflow:hidden;"></div>
+<div id="wood3d-tip" style="position:fixed;pointer-events:none;background:rgba(44,24,16,.88);
+  color:#fff;padding:5px 10px;border-radius:4px;font-size:.82em;
+  display:none;z-index:999;line-height:1.4;"></div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/controls/OrbitControls.js';
 
+(function () {
+  const PIECES = __PIECES__;
 
-# ── Colour helpers ────────────────────────────────────────────────────────────
+  const container = document.getElementById('wood3d-view');
+  const tooltip   = document.getElementById('wood3d-tip');
+  if (!container) return;
 
-def _darken(hex_col: str, factor: float = 0.70) -> str:
-    h = hex_col.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    return "#{:02x}{:02x}{:02x}".format(int(r * factor), int(g * factor), int(b * factor))
+  const H = 520;
+  let W = container.clientWidth || 900;
 
+  // ── Renderer ────────────────────────────────────────────────────────────────
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
 
-def _lighten(hex_col: str, factor: float = 1.12) -> str:
-    h = hex_col.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    return "#{:02x}{:02x}{:02x}".format(
-        min(255, int(r * factor)),
-        min(255, int(g * factor)),
-        min(255, int(b * factor)),
-    )
+  // ── Scene & camera ──────────────────────────────────────────────────────────
+  const scene  = new THREE.Scene();
+  scene.background = new THREE.Color(0xf0ebe2);
 
+  const camera = new THREE.PerspectiveCamera(45, W / H, 1, 500000);
 
-# ── Utility helpers ───────────────────────────────────────────────────────────
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping  = true;
+  controls.dampingFactor  = 0.06;
 
-def _esc(s: str) -> str:
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+  // ── Lighting ────────────────────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0xfff5e6, 0.70));
 
+  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+  sun.position.set(1000, 2000, 800);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  scene.add(sun);
 
-def _truncate(s: str, n: int) -> str:
-    return s if len(s) <= n else s[: n - 1] + "\u2026"
+  const fill = new THREE.DirectionalLight(0xe8d5b0, 0.40);
+  fill.position.set(-800, 400, -600);
+  scene.add(fill);
 
+  // ── Shadow-receiving floor ──────────────────────────────────────────────────
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(500000, 500000),
+    new THREE.ShadowMaterial({ opacity: 0.15 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -1;
+  floor.receiveShadow = true;
+  scene.add(floor);
 
-# ── Isometric projection ──────────────────────────────────────────────────────
+  // ── Build piece meshes ──────────────────────────────────────────────────────
+  const group  = new THREE.Group();
+  const meshes = [];
 
-def _iso(
-    x: float, y: float, z: float, scale: float, ox: float, oy: float
-) -> Tuple[float, float]:
-    """Map world (x right, y up, z depth) → screen (sx, sy).
+  for (const p of PIECES) {
+    const geom  = new THREE.BoxGeometry(p.dx, p.dy, p.dz);
+    const color = parseInt(p.colour.replace('#', ''), 16);
+    const mat   = new THREE.MeshLambertMaterial({ color });
+    const mesh  = new THREE.Mesh(geom, mat);
+    mesh.position.set(p.x + p.dx / 2, p.y + p.dy / 2, p.z + p.dz / 2);
+    mesh.castShadow    = true;
+    mesh.receiveShadow = true;
+    mesh.userData.label = p.label;
+    mesh.userData.dims  = (
+      Math.round(p.dx) + '\u00d7' +
+      Math.round(p.dy) + '\u00d7' +
+      Math.round(p.dz) + ' mm'
+    );
+    group.add(mesh);
+    meshes.push(mesh);
 
-    Camera looks from upper-front-right.
-    """
-    sx = (x - z) * _COS30 * scale + ox
-    sy = (-y + (x + z) * _SIN30) * scale + oy
-    return sx, sy
+    // Crisp outline edges
+    mesh.add(new THREE.LineSegments(
+      new THREE.EdgesGeometry(geom, 5),
+      new THREE.LineBasicMaterial({ color: 0x2c1810, transparent: true, opacity: 0.55 })
+    ));
+  }
+  scene.add(group);
 
+  // ── Fit camera to the assembled group ───────────────────────────────────────
+  const bbox   = new THREE.Box3().setFromObject(group);
+  const center = bbox.getCenter(new THREE.Vector3());
+  const size   = bbox.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fovRad = camera.fov * Math.PI / 180;
+  const dist   = (maxDim / 2) / Math.tan(fovRad / 2) * 1.9;
+  camera.position.set(
+    center.x + dist * 0.55,
+    center.y + dist * 0.50,
+    center.z + dist * 0.85
+  );
+  camera.lookAt(center);
+  controls.target.copy(center);
+  controls.minDistance = maxDim * 0.15;
+  controls.maxDistance = maxDim * 10;
+  controls.update();
 
-# ── Box SVG renderer ──────────────────────────────────────────────────────────
+  // Fit shadow camera to scene bounding box
+  sun.shadow.camera.left   = -maxDim * 1.2;
+  sun.shadow.camera.right  =  maxDim * 1.2;
+  sun.shadow.camera.top    =  maxDim * 1.2;
+  sun.shadow.camera.bottom = -maxDim * 1.2;
+  sun.shadow.camera.near   = 10;
+  sun.shadow.camera.far    = maxDim * 8;
+  sun.shadow.camera.updateProjectionMatrix();
 
-def _box_svg(
-    px: float, py: float, pz: float,
-    dx: float, dy: float, dz: float,
-    base_col: str,
-    scale: float, ox: float, oy: float,
-    label: str = "",
-) -> str:
-    """Return SVG markup for one isometric box.
+  // ── Hover tooltip via raycasting ─────────────────────────────────────────────
+  const raycaster = new THREE.Raycaster();
+  const mouse     = new THREE.Vector2();
+  let hoveredMesh = null;
 
-    Visible faces: top (lightest), front (base colour), right side (darkest).
-    """
-    def p(x: float, y: float, z: float) -> Tuple[float, float]:
-        return _iso(x, y, z, scale, ox, oy)
+  renderer.domElement.addEventListener('mousemove', (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+    mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(meshes);
+    if (hits.length > 0) {
+      const m = hits[0].object;
+      if (m !== hoveredMesh) {
+        if (hoveredMesh) hoveredMesh.material.emissive.setHex(0x000000);
+        hoveredMesh = m;
+        hoveredMesh.material.emissive.setHex(0x331100);
+      }
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.style.left    = (e.clientX + 14) + 'px';
+        tooltip.style.top     = (e.clientY - 36) + 'px';
+        tooltip.innerHTML = '<strong>' + m.userData.label + '</strong><br>' + m.userData.dims;
+      }
+    } else {
+      if (hoveredMesh) { hoveredMesh.material.emissive.setHex(0x000000); hoveredMesh = null; }
+      if (tooltip) tooltip.style.display = 'none';
+    }
+  });
 
-    # 7 corners actually needed (back-bottom-left is never visible)
-    FBL = p(px,      py,      pz)
-    FBR = p(px + dx, py,      pz)
-    FTR = p(px + dx, py + dy, pz)
-    FTL = p(px,      py + dy, pz)
-    BBR = p(px + dx, py,      pz + dz)
-    BTR = p(px + dx, py + dy, pz + dz)
-    BTL = p(px,      py + dy, pz + dz)
+  renderer.domElement.addEventListener('mouseleave', () => {
+    if (hoveredMesh) { hoveredMesh.material.emissive.setHex(0x000000); hoveredMesh = null; }
+    if (tooltip) tooltip.style.display = 'none';
+  });
 
-    def pts(*corners: Tuple[float, float]) -> str:
-        return " ".join(f"{c[0]:.1f},{c[1]:.1f}" for c in corners)
+  // ── Responsive resize ────────────────────────────────────────────────────────
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => {
+      W = container.clientWidth;
+      renderer.setSize(W, H);
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
+    }).observe(container);
+  }
 
-    top_col   = _lighten(base_col)
-    front_col = base_col
-    right_col = _darken(base_col)
-    sw = max(0.4, scale * 1.2)
-
-    parts: List[str] = []
-    # Top face:   FTL → FTR → BTR → BTL
-    parts.append(
-        f'<polygon points="{pts(FTL, FTR, BTR, BTL)}" fill="{top_col}" '
-        f'stroke="#2c1810" stroke-width="{sw:.2f}"/>'
-    )
-    # Front face: FBL → FBR → FTR → FTL
-    parts.append(
-        f'<polygon points="{pts(FBL, FBR, FTR, FTL)}" fill="{front_col}" '
-        f'stroke="#2c1810" stroke-width="{sw:.2f}"/>'
-    )
-    # Right face: FBR → BBR → BTR → FTR
-    parts.append(
-        f'<polygon points="{pts(FBR, BBR, BTR, FTR)}" fill="{right_col}" '
-        f'stroke="#2c1810" stroke-width="{sw:.2f}"/>'
-    )
-
-    # Text label on the front face (skip if the face is too thin to show text)
-    if label and dy * scale > 14:
-        cx = (FBL[0] + FBR[0] + FTR[0] + FTL[0]) / 4
-        cy = (FBL[1] + FBR[1] + FTR[1] + FTL[1]) / 4
-        fs = max(7, min(11, int(dy * scale * 0.35)))
-        parts.append(
-            f'<text x="{cx:.1f}" y="{cy:.1f}" '
-            f'text-anchor="middle" dominant-baseline="middle" '
-            f'font-size="{fs}" fill="#fff" font-weight="600">'
-            f"{_esc(label)}</text>"
-        )
-
-    return "".join(parts)
+  // ── Render loop ──────────────────────────────────────────────────────────────
+  (function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  })();
+})();
+</script>
+</div>"""
 
 
 # ── Element expansion helper ──────────────────────────────────────────────────
@@ -238,7 +307,7 @@ def _infer_layout(project: Project) -> List[Dict]:
             y_positions = list(dado_offsets)
             while len(y_positions) < se.quantity:
                 if y_positions:
-                    last = y_positions[-1]
+                    last   = y_positions[-1]
                     avail  = side_height - 50.0 - last - se.thickness
                     remain = se.quantity - len(y_positions)
                     step   = avail / max(1, remain + 1)
@@ -263,7 +332,7 @@ def _infer_layout(project: Project) -> List[Dict]:
         if tb_tpls:
             panel_thick = float(tb_tpls[0].thickness)
             tb_y = [0.0, side_height - panel_thick]
-            all_tb: List[Tuple[Element, Element]] = []
+            all_tb = []
             for te in tb_tpls:
                 for p in _expand(te):
                     all_tb.append((te, p))
@@ -276,10 +345,10 @@ def _infer_layout(project: Project) -> List[Dict]:
                 ))
 
         # Back braces — distributed evenly in height, at the back of the unit
-        all_brace: List[Tuple[str, Element, Element]] = []
+        all_brace = []
         for bid in brace_ids:
             if bid in elem_tpls:
-                be = elem_tpls[bid]
+                be  = elem_tpls[bid]
                 col = col_map.get(be.material_id, _COLOURS[2])
                 for bp in _expand(be):
                     all_brace.append((col, bp, be))
@@ -297,9 +366,9 @@ def _infer_layout(project: Project) -> List[Dict]:
     else:
         _box_layout(project, col_map, placed)
 
-    # ── Fallback: place any still-unpositioned pieces in a grid ──────────────
+    # ── Fallback: place any still-unpositioned pieces in a row ────────────────
     placed_ids = {item["piece"].id for item in placed}
-    remaining = [p for p in project.all_pieces() if p.id not in placed_ids]
+    remaining  = [p for p in project.all_pieces() if p.id not in placed_ids]
     if remaining:
         _fallback_grid(remaining, col_map, placed)
 
@@ -312,18 +381,17 @@ def _box_layout(project: Project, col_map: Dict[str, str], placed: List[Dict]) -
     if not sorted_tpls:
         return
 
-    max_len     = float(sorted_tpls[0].length)
-    box_height  = float(sorted_tpls[0].width)
-    box_thick   = float(sorted_tpls[0].thickness)
+    max_len    = float(sorted_tpls[0].length)
+    box_height = float(sorted_tpls[0].width)
+    box_thick  = float(sorted_tpls[0].thickness)
 
-    long_sides  = [e for e in sorted_tpls if abs(e.length - max_len) < 5]
-    rest        = [e for e in sorted_tpls if e not in long_sides]
-    end_panels  = [e for e in rest if e.width >= box_height * 0.8]
-    bottom_pcs  = [e for e in rest if e not in end_panels]
+    long_sides = [e for e in sorted_tpls if abs(e.length - max_len) < 5]
+    rest       = [e for e in sorted_tpls if e not in long_sides]
+    end_panels = [e for e in rest if e.width >= box_height * 0.8]
+    bottom_pcs = [e for e in rest if e not in end_panels]
 
     inner_depth = float(end_panels[0].length) if end_panels else 150.0
 
-    # Front and back long-side panels
     for ls in long_sides:
         col = col_map.get(ls.material_id, _COLOURS[0])
         for j, p in enumerate(_expand(ls)):
@@ -334,7 +402,6 @@ def _box_layout(project: Project, col_map: Dict[str, str], placed: List[Dict]) -
                 dx=max_len, dy=box_height, dz=box_thick,
             ))
 
-    # Left and right end panels
     for ep in end_panels:
         col = col_map.get(ep.material_id, _COLOURS[1])
         for j, p in enumerate(_expand(ep)):
@@ -345,8 +412,7 @@ def _box_layout(project: Project, col_map: Dict[str, str], placed: List[Dict]) -
                 dx=box_thick, dy=box_height, dz=inner_depth,
             ))
 
-    # Bottom slats — evenly distributed across the inner depth
-    all_bottom: List[Tuple[str, Element]] = [
+    all_bottom = [
         (col_map.get(be.material_id, _COLOURS[2]), bp)
         for be in bottom_pcs
         for bp in _expand(be)
@@ -381,69 +447,23 @@ def _fallback_grid(
 # ── Main public function ──────────────────────────────────────────────────────
 
 def render_3d_html(project: Project) -> str:
-    """Render an isometric 3D preview of the project as an HTML ``<div>`` section."""
+    """Render an interactive Three.js 3D preview of the project as an HTML card."""
     placed = _infer_layout(project)
     if not placed:
         return ""
 
-    # Determine scene bounding box (to centre and scale)
-    xs = [item["x"] for item in placed] + [item["x"] + item["dx"] for item in placed]
-    ys = [item["y"] for item in placed] + [item["y"] + item["dy"] for item in placed]
-    zs = [item["z"] for item in placed] + [item["z"] + item["dz"] for item in placed]
-
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    min_z, max_z = min(zs), max(zs)
-
-    scene_w = max_x - min_x
-    scene_h = max_y - min_y
-    scene_d = max_z - min_z
-
-    # Scale so the tallest dimension fits in ~350 px
-    target_px = 350.0
-    scale = target_px / max(scene_w, scene_h, scene_d, 1.0)
-
-    # SVG viewport
-    svg_w = int((scene_w + scene_d) * _COS30 * scale) + 80
-    svg_h = int(scene_h * scale + (scene_w + scene_d) * _SIN30 * scale) + 60
-
-    # Offset so the scene sits nicely in the viewport
-    ox = int(scene_d * _COS30 * scale) + 30
-    oy = svg_h - 20
-
-    # Painter's algorithm: draw pieces furthest from camera first
-    # (highest centroid x + z = furthest from the viewer in isometric space)
-    placed_sorted = sorted(
-        placed,
-        key=lambda item: -(
-            (item["x"] - min_x + item["dx"] / 2)
-            + (item["z"] - min_z + item["dz"] / 2)
-        ),
-    )
-
-    parts: List[str] = []
-    for item in placed_sorted:
-        lbl = _truncate(item["piece"].display_label, 12)
-        parts.append(_box_svg(
-            item["x"] - min_x,
-            item["y"] - min_y,
-            item["z"] - min_z,
-            item["dx"], item["dy"], item["dz"],
-            item["colour"],
-            scale=scale, ox=ox, oy=oy,
-            label=lbl,
-        ))
-
-    svg_inner = "\n".join(parts)
-
-    return (
-        '<div class="card"><h2>&#x1F50D; 3D Preview</h2>\n'
-        '<p style="color:#888;font-size:.85em">Isometric view &mdash; '
-        'heuristic assembly layout</p>\n'
-        '<div style="overflow:auto;background:linear-gradient(135deg,#ede8e0,#ddd5c8);'
-        'border-radius:8px;padding:20px;display:inline-block">'
-        f'<svg width="{svg_w}" height="{svg_h}" xmlns="http://www.w3.org/2000/svg"'
-        f' viewBox="0 0 {svg_w} {svg_h}">'
-        f'\n{svg_inner}\n'
-        '</svg></div></div>'
-    )
+    pieces_data = [
+        {
+            "label":  item["piece"].display_label,
+            "x":      round(item["x"],  2),
+            "y":      round(item["y"],  2),
+            "z":      round(item["z"],  2),
+            "dx":     round(item["dx"], 2),
+            "dy":     round(item["dy"], 2),
+            "dz":     round(item["dz"], 2),
+            "colour": item["colour"],
+        }
+        for item in placed
+    ]
+    pieces_json = json.dumps(pieces_data, separators=(",", ":"))
+    return _THREE_TEMPLATE.replace("__PIECES__", pieces_json)

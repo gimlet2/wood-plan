@@ -289,8 +289,8 @@ class TestVisualizer:
 class TestViewer3D:
     def test_render_returns_html(self, simple_project):
         html = viewer3d.render_3d_html(simple_project)
-        assert "<svg" in html
-        assert "polygon" in html
+        assert "<div" in html
+        assert "three" in html.lower()
 
     def test_render_contains_piece_labels(self, simple_project):
         html = viewer3d.render_3d_html(simple_project)
