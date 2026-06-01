@@ -62,19 +62,66 @@ elements:
     quantity: 2       # generates two identical pieces
 
 joints:
-  - type: dado          # dado | butt | mortise_tenon | dovetail | pocket | biscuit
+  - type: dado          # see "Joint types" table below
     from_element: side_panel
     to_element: shelf
     description: "Shelf dado"
     depth: 6            # mm
     position:
-      edge: bottom
+      edge: bottom      # bottom | top | left | right | front | back
       offset: 300       # mm from edge
-    fastener: glue      # glue | screw | nail | dowel
+    fastener: glue      # glue | screw | nail | brad_nail | dowel | bolt | pocket_screw | biscuit
 ```
+
+### Joint types
+
+| Type | Description |
+|------|-------------|
+| `dado` | Rectangular channel cut across the grain to seat a shelf or panel |
+| `rabbet` | Notch along the edge or end of a board (one-sided dado) |
+| `butt` | Two square-cut pieces meet face-to-face or end-to-face |
+| `miter` | Both pieces cut at a matching angle (typically 45°) |
+| `half_lap` | Half the thickness removed from each piece so they sit flush |
+| `box_joint` | Interlocking rectangular fingers along the end of a board (finger joint) |
+| `mortise_tenon` | A projecting tenon fits into a matching mortise hole |
+| `bridle` | Open mortise-and-tenon; the tenon slides into a forked end |
+| `tongue_groove` | A tongue (ridge) fits into a matching groove |
+| `spline` | A thin strip of wood fits into slots in both faces |
+| `dovetail` | Trapezoidal interlocking fingers; very strong and decorative |
+| `pocket` | Angled hole driven with a pocket-screw jig |
+| `biscuit` | Oval compressed-wood wafer glued into matching slots |
+| `dowel` | Cylindrical wooden pins align and reinforce the joint |
 
 See [`examples/bookshelf.wood`](examples/bookshelf.wood) and
 [`examples/planter_box.wood`](examples/planter_box.wood) for complete examples.
+
+---
+
+## Editor support / autocompletion
+
+A [JSON Schema](schema/wood-plan.schema.json) is provided for `.wood` files.
+
+### VS Code
+
+Install the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml).
+The included `.vscode/settings.json` automatically associates `*.wood` files
+with the schema, so you get autocompletion and validation out of the box.
+
+If you open the project from a different workspace you can add the association
+manually in your **settings.json**:
+
+```json
+{
+  "yaml.schemas": {
+    "./schema/wood-plan.schema.json": "*.wood"
+  }
+}
+```
+
+### Other editors
+
+Point your editor's YAML Language Server at the schema file
+`schema/wood-plan.schema.json` and associate it with the glob `*.wood`.
 
 ---
 
