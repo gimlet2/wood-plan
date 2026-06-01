@@ -32,9 +32,17 @@ _THREE_TEMPLATE = """\
 <div id="wood3d-tip" style="position:fixed;pointer-events:none;background:rgba(44,24,16,.88);
   color:#fff;padding:5px 10px;border-radius:4px;font-size:.82em;
   display:none;z-index:999;line-height:1.4;"></div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
 <script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 (function () {
   const PIECES = __PIECES__;
