@@ -1,0 +1,66 @@
+# Garden Planter Box
+# Units: mm
+# A simple cedar planter box for a herb garden.
+
+project:
+  name: "Cedar Herb Planter Box"
+  description: "Outdoor cedar planter box, 600×200×200 mm, with drainage holes"
+  unit: mm
+
+materials:
+  - id: cedar_1x8
+    type: board
+    species: cedar
+    width: 184
+    thickness: 19
+    length: 1830     # 6-foot board
+    cost_per_length: 12.00
+
+  - id: cedar_1x4
+    type: board
+    species: cedar
+    width: 89
+    thickness: 19
+    length: 1830
+    cost_per_length: 7.00
+
+elements:
+  - id: long_side
+    material: cedar_1x8
+    dimensions:
+      length: 600
+      width: 184
+      thickness: 19
+    label: "Long Side"
+    quantity: 2
+
+  - id: short_side
+    material: cedar_1x8
+    dimensions:
+      length: 162    # 200mm - 2×19mm sides
+      width: 184
+      thickness: 19
+    label: "Short End"
+    quantity: 2
+
+  - id: bottom_slat
+    material: cedar_1x4
+    dimensions:
+      length: 562    # inner width with 19mm gap each side
+      width: 89
+      thickness: 19
+    label: "Bottom Slat"
+    quantity: 3
+
+joints:
+  - type: butt
+    from_element: long_side
+    to_element: short_side
+    description: "Corner joint — long side to short end"
+    fastener: screw
+
+  - type: butt
+    from_element: bottom_slat
+    to_element: long_side
+    description: "Bottom slat rests on long side ledge"
+    fastener: nail
